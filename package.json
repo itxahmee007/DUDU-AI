@@ -1,0 +1,21 @@
+{
+  "name": "dailybot",
+  "version": "1.0.0",
+  "description": "Personal AI-free daily schedule & WhatsApp reminder assistant",
+  "main": "server/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode": "^1.5.4",
+    "better-sqlite3": "^11.3.0",
+    "node-cron": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ws": "^8.18.0"
+  }
+}

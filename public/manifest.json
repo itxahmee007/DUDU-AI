@@ -1,0 +1,13 @@
+{
+  "name": "DailyBot — Your Day, On Time",
+  "short_name": "DailyBot",
+  "description": "Personal schedule, WhatsApp reminders, and daily summaries.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#13171C",
+  "theme_color": "#13171C",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
