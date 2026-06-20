@@ -24,15 +24,54 @@ let myNumber = null;     // your own WhatsApp number, detected after login, e.g.
 
 let onIncomingMessage = () => {}; // callback set by index.js
 
+// Find the real Chromium binary path installed by nixpacks.toml on Railway.
+// Nix installs packages into auto-generated hashed folders like
+// /nix/store/abc123-chromium-XX/bin/chromium, so we can't hardcode the path —
+// instead we search common locations and the chromium-browser/which command.
+function findChromiumPath() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return process.env.PUPPETEER_EXECUTABLE_PATH;
+
+  const { execSync } = require("child_process");
+  const candidates = ["chromium", "chromium-browser", "google-chrome-stable", "google-chrome"];
+
+  for (const bin of candidates) {
+    try {
+      const found = execSync(`which ${bin} 2>/dev/null`).toString().trim();
+      if (found) return found;
+    } catch (e) {
+      // not found, try next
+    }
+  }
+
+  // Fallback: search the Nix store directly for a chromium binary
+  try {
+    const found = execSync(
+      `find /nix/store -maxdepth 4 -type f -name chromium -path "*/bin/*" 2>/dev/null | head -n 1`
+    ).toString().trim();
+    if (found) return found;
+  } catch (e) {
+    // ignore
+  }
+
+  return undefined; // let Puppeteer fall back to its own bundled Chromium (local dev)
+}
+
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: require("path").join(__dirname, "..", "data", "wwebjs_auth") }),
   puppeteer: {
     headless: true,
+    executablePath: (() => {
+      const p = findChromiumPath();
+      console.log("[whatsapp] Using Chromium executable path:", p || "(none found — using Puppeteer's bundled default)");
+      return p;
+    })(),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-extensions",
     ],
   },
 });
