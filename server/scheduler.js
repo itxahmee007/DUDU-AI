@@ -18,11 +18,18 @@ function setAlarmBroadcaster(fn) {
 
 function pad(n) { return String(n).padStart(2, "0"); }
 
+// IMPORTANT FIX: Railway's server clock runs in UTC, not Pakistan time.
+// Without this, "6:00 PM" typed in the app would only fire at 6:00 PM UTC,
+// which is 11:00 PM in Pakistan (UTC+5) — explaining reminders that seemed
+// to "not work." We force Pakistan time here regardless of server timezone.
+const PK_OFFSET_HOURS = 5; // Pakistan Standard Time = UTC+5, no daylight saving
+
 function nowParts() {
-  const d = new Date();
+  const utcNow = new Date();
+  const pkNow = new Date(utcNow.getTime() + PK_OFFSET_HOURS * 60 * 60 * 1000);
   return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    date: `${pkNow.getUTCFullYear()}-${pad(pkNow.getUTCMonth() + 1)}-${pad(pkNow.getUTCDate())}`,
+    time: `${pad(pkNow.getUTCHours())}:${pad(pkNow.getUTCMinutes())}`,
   };
 }
 
@@ -54,14 +61,12 @@ async function checkSchedule() {
     const minutesSince = (Date.now() - sentAt.getTime()) / 60000;
     if (minutesSince >= 5) {
       db.prepare(`UPDATE schedule_items SET status = 'escalated' WHERE id = ?`).run(item.id);
-      // Fire the loud in-app alarm (push to web app via WebSocket)
       broadcastAlarm({
         type: "ESCALATE",
         scheduleId: item.id,
         title: item.title,
         message: `You didn't respond to "${item.title}" — escalation alarm triggered.`,
       });
-      // Also send a follow-up WhatsApp nudge
       whatsapp.sendToSelf(`🚨 You didn't respond to "${item.title}" within 5 minutes. Opening the alarm now.`)
         .catch(() => {});
       console.log(`[scheduler] Escalated reminder #${item.id}`);
@@ -90,14 +95,12 @@ async function checkSchedule() {
   }
 }
 
-// Mark a schedule item acknowledged (called when you reply on WhatsApp, or tap "done" in web app)
 function acknowledge(scheduleId) {
   db.prepare(
     `UPDATE schedule_items SET status = 'acknowledged', acknowledged_at = datetime('now') WHERE id = ?`
   ).run(scheduleId);
 }
 
-// Try to match an incoming WhatsApp reply to the most recent 'sent' or 'escalated' item
 function acknowledgeMostRecentPending() {
   const item = db.prepare(
     `SELECT * FROM schedule_items WHERE status IN ('sent','escalated') ORDER BY sent_at DESC LIMIT 1`
@@ -110,7 +113,6 @@ function acknowledgeMostRecentPending() {
 }
 
 function start() {
-  // runs once per minute, on the minute
   cron.schedule("* * * * *", () => {
     checkSchedule().catch((e) => console.error("[scheduler] tick error:", e));
   });
