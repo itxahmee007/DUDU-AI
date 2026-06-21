@@ -3,31 +3,40 @@
 // Works in Chrome/Android. Falls back gracefully (hides mic button) if unsupported.
 
 const API = ""; // same origin
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Pakistan time, not UTC/browser local time of the device viewing this —
+// keeps the app consistent with the server's Pakistan-time scheduling.
+const todayStr = () => {
+  const PK_OFFSET_HOURS = 5;
+  const pkNow = new Date(Date.now() + PK_OFFSET_HOURS * 60 * 60 * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pkNow.getUTCFullYear()}-${pad(pkNow.getUTCMonth() + 1)}-${pad(pkNow.getUTCDate())}`;
+};
 
-// ---------- Tab switching ----------
-const tabs = document.querySelectorAll(".tab");
+// ---------- Nav switching ----------
 const navBtns = document.querySelectorAll(".nav-btn");
 const views = document.querySelectorAll(".view");
 
 function switchView(name) {
   views.forEach(v => v.classList.toggle("active", v.id === `view-${name}`));
-  tabs.forEach(t => t.classList.toggle("active", t.dataset.view === name));
   navBtns.forEach(b => b.classList.toggle("active", b.dataset.view === name));
   if (name === "summary") loadSummary();
   if (name === "people") { loadContacts(); refreshWhatsAppStatus(); }
   if (name === "today") loadToday();
 }
-[...tabs, ...navBtns].forEach(el => {
+navBtns.forEach(el => {
   el.addEventListener("click", () => switchView(el.dataset.view));
 });
 
 // ---------- Date/time field defaults ----------
 document.getElementById("taskDate").value = todayStr();
 document.getElementById("msgDate").value = todayStr();
-document.getElementById("todayLabel").textContent = new Date().toLocaleDateString("en-US", {
-  weekday: "long", month: "long", day: "numeric",
-});
+{
+  const [y, m, d] = todayStr().split("-").map(Number);
+  const pkDate = new Date(y, m - 1, d);
+  document.getElementById("todayLabel").textContent = pkDate.toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric",
+  });
+}
 
 // ---------- WhatsApp connection status ----------
 async function refreshWhatsAppStatus() {
@@ -63,14 +72,7 @@ async function refreshWhatsAppStatus() {
 refreshWhatsAppStatus();
 setInterval(refreshWhatsAppStatus, 5000);
 
-// ---------- Timeline (Today view) ----------
-function timeToMinutes(t) {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-}
-function minutesToPercent(mins) {
-  return (mins / (24 * 60)) * 100;
-}
+// ---------- Today view (simple list) ----------
 function formatTime12(t) {
   const [h, m] = t.split(":").map(Number);
   const ampm = h >= 12 ? "PM" : "AM";
@@ -84,37 +86,22 @@ async function loadToday() {
   const list = document.getElementById("taskList");
 
   if (items.length === 0) {
-    list.innerHTML = `<div class="empty-state"><p>Nothing scheduled for today yet. Go to <strong>Plan</strong> to add your tasks — type them or use the mic.</p></div>`;
-  } else {
-    list.innerHTML = items.map(item => `
-      <div class="task-item" data-id="${item.id}">
-        <span class="task-pin ${item.status}"></span>
-        <div class="task-card">
-          <div>
-            <div class="task-time">${formatTime12(item.scheduled_time)}</div>
-          </div>
-          <div class="task-body">
-            <div class="task-title">${escapeHtml(item.title)}</div>
-            ${item.notes ? `<div class="task-notes">${escapeHtml(item.notes)}</div>` : ""}
-          </div>
-          <span class="task-status-tag ${item.status}">${item.status}</span>
-        </div>
-      </div>
-    `).join("");
+    list.innerHTML = `<div class="empty-state"><p>Nothing scheduled for today yet.<br>Go to <strong>Plan</strong> to add a task — type it, speak it, or message <code>ADD 6:00 PM Task</code> on WhatsApp.</p></div>`;
+    return;
   }
 
-  // Position "now" marker
-  const now = new Date();
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const pct = minutesToPercent(nowMins);
-  const wrap = document.getElementById("timelineWrap");
-  const marker = document.getElementById("nowMarker");
-  const label = document.getElementById("nowLabel");
-  const wrapHeight = wrap.offsetHeight || 400;
-  const topPx = Math.max(6, Math.min(wrapHeight - 6, (pct / 100) * wrapHeight));
-  marker.style.top = `${topPx}px`;
-  label.style.top = `${topPx}px`;
-  label.textContent = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  list.innerHTML = items.map(item => `
+    <div class="task-item" data-id="${item.id}">
+      <div class="task-card ${item.status}">
+        <div class="task-time">${formatTime12(item.scheduled_time)}</div>
+        <div class="task-body">
+          <div class="task-title">${escapeHtml(item.title)}</div>
+          ${item.notes ? `<div class="task-notes">${escapeHtml(item.notes)}</div>` : ""}
+        </div>
+        <span class="task-status-tag ${item.status}">${item.status}</span>
+      </div>
+    </div>
+  `).join("");
 }
 function escapeHtml(s) {
   const d = document.createElement("div");
@@ -316,6 +303,9 @@ function connectWS() {
       triggerAlarm(data.title);
     } else if (data.type === "ACK") {
       loadToday();
+    } else if (data.type === "REFRESH") {
+      loadToday();
+      loadSummary();
     }
   });
 
